@@ -12,131 +12,144 @@ pipeline {
         pollSCM('H/2 * * * *')
     }
 
+    environment {
+        PYTHON = 'C:\\Users\\Dell\\AppData\\Local\\Programs\\Python\\Python310\\python.exe'
+    }
+
     stages {
+
         stage('Checkout') {
             steps {
+                echo 'Checking out source code from GitHub...'
                 checkout scm
-                echo 'Source code checked out'
             }
         }
 
         stage('Verify Files') {
             steps {
+                echo 'Checking required project files...'
+
                 bat '''
+                    @echo off
+
                     if not exist requirements.txt (
-                        echo ERROR: requirements.txt not found
+                        echo ERROR: requirements.txt not found!
                         exit /b 1
                     )
+
                     if not exist index.html (
-                        echo ERROR: index.html not found
+                        echo ERROR: index.html not found!
                         exit /b 1
                     )
-                    echo Required files found
+
+                    echo All required files are present.
                 '''
             }
         }
 
         stage('Install Dependencies') {
             steps {
+                echo 'Installing Python dependencies...'
+
                 bat '''
                     @echo off
-                    set "PYTHON_CMD="
 
-                    where py >nul 2>&1
-                    if not errorlevel 1 (
-                        py -3 --version
-                        if not errorlevel 1 set "PYTHON_CMD=py -3"
-                    )
+                    echo Checking Python installation...
+                    "%PYTHON%" --version
+                    if errorlevel 1 exit /b 1
 
-                    if not defined PYTHON_CMD (
-                        where python >nul 2>&1
-                        if not errorlevel 1 (
-                            python --version
-                            if not errorlevel 1 set "PYTHON_CMD=python"
-                        )
-                    )
+                    echo Checking pip...
+                    "%PYTHON%" -m pip --version
 
-                    if not defined PYTHON_CMD (
-                        echo ERROR: Python 3 not found.
-                        echo Install Python 3 and enable Add Python to PATH.
-                        echo Restart Jenkins service after installation.
-                        exit /b 1
-                    )
-
-                    echo Python detected successfully
-                    %PYTHON_CMD% --version
-
-                    %PYTHON_CMD% -m pip --version
                     if errorlevel 1 (
-                        %PYTHON_CMD% -m ensurepip --upgrade
+                        "%PYTHON%" -m ensurepip --upgrade
                         if errorlevel 1 exit /b 1
                     )
 
-                    %PYTHON_CMD% -m pip install --upgrade pip
+                    echo Installing requirements...
+                    "%PYTHON%" -m pip install -r requirements.txt
                     if errorlevel 1 exit /b 1
 
-                    %PYTHON_CMD% -m pip install -r requirements.txt
-                    if errorlevel 1 exit /b 1
-
-                    echo Dependencies installed successfully
+                    echo Dependencies installed successfully!
                 '''
             }
         }
 
         stage('Build') {
             steps {
+                echo 'Building the application...'
+
                 bat '''
-                    if not exist build mkdir build
-                    copy /Y index.html build\\index.html
-                    if errorlevel 1 exit /b 1
-                    echo Build completed successfully
+                    @echo off
+
+                    if exist build rmdir /s /q build
+
+                    mkdir build
+
+                    copy index.html build\\index.html
+
+                    echo Build completed successfully!
                 '''
             }
         }
 
         stage('Test') {
             steps {
+                echo 'Testing the application...'
+
                 bat '''
-                    if not exist build\\index.html exit /b 1
+                    @echo off
+
+                    if not exist build\\index.html (
+                        echo ERROR: Build output not found!
+                        exit /b 1
+                    )
 
                     findstr /C:"Welcome to Jenkins CI/CD!" build\\index.html
 
                     if errorlevel 1 (
-                        echo ERROR: Test failed
+                        echo ERROR: Expected welcome text not found!
                         exit /b 1
                     )
 
-                    echo Test passed successfully
+                    echo All tests passed successfully!
                 '''
             }
         }
 
         stage('Package') {
             steps {
-                bat '''
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'build\\*' -DestinationPath 'application.zip' -Force"
+                echo 'Creating application ZIP package...'
 
-                    if errorlevel 1 exit /b 1
-                    echo Package created successfully
+                powershell '''
+                    if (Test-Path "application.zip") {
+                        Remove-Item "application.zip" -Force
+                    }
+
+                    Compress-Archive `
+                        -Path "build\\*" `
+                        -DestinationPath "application.zip" `
+                        -Force
+
+                    Write-Host "Application packaged successfully!"
                 '''
 
-                archiveArtifacts artifacts: 'application.zip',
-                    fingerprint: true
+                archiveArtifacts artifacts: 'application.zip', fingerprint: true
             }
         }
     }
 
     post {
         success {
-            echo 'SUCCESS: Pipeline completed!'
+            echo 'SUCCESS: Jenkins CI/CD pipeline completed successfully!'
         }
 
         failure {
-            echo 'ERROR: Pipeline failed. Check the logs.'
+            echo 'FAILURE: Jenkins CI/CD pipeline failed. Check the Console Output.'
         }
 
         always {
-            echo 'Pipeline finished.'
+            echo 'Jenkins pipeline execution finished.'
         }
     }
 }
